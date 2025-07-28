@@ -1,4 +1,5 @@
 import torch
+from tqdm import tqdm
 from pathlib import Path
 import argparse
 import json
@@ -68,7 +69,7 @@ def benchmark_and_log_models(audio_paths, model_param_grid_map, log_dir):
     all_results = []
 
     for model_name, param_grid in model_param_grid_map.items():
-        for params in param_grid:
+        for params in tqdm(param_grid):
             for audio_path, label_path in audio_paths:
                 try:
                     stats = run_benchmark(model_name, params, audio_path, label_path)
