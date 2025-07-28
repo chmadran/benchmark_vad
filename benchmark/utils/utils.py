@@ -1,3 +1,4 @@
+from datetime import datetime
 import psutil
 import os
 import json
@@ -7,6 +8,17 @@ import numpy as np
 import librosa.display
 import matplotlib.pyplot as plt
 from scipy.io import wavfile
+
+def create_log_dirs(args_log_dir, args_models):
+    log_dir = os.path.join(str(args_log_dir), datetime.now().strftime("%Y%m%d_%H:%M:%S"))
+    os.makedirs(log_dir, exist_ok=True)
+    for model in args_models:
+        model_log_dir = os.path.join(log_dir, model)
+        try :
+            os.makedirs(model_log_dir, exist_ok=True)
+        except Exception as e:
+            print(f"An error occurred: {e}")
+    return log_dir
 
 def process_data(path_audio):
     sr, wav = wavfile.read(path_audio)
