@@ -12,17 +12,21 @@ import numpy as np
 
 from utils.utils import process_data, load_labels, convert_predictions_to_seconds, get_memory_usage_mb, create_log_dirs
 from post_process.post_process import match_segments, compare_model_metrics
-from grid_search.grid_search import init_grid_search
+from params.params import init_params
 
 from models.silero import SileroVAD
 from models.webrtc import WebRTCVAD
+from models.pyannote import PyAnnoteVAD
 from IPython.display import Audio
+
+#TODO: Pre and Post processing of the audio could be improved honestly, maybe in a class?
+#TODO: Potentially cleaner to create a Factory SD for the VADs
 
 AUDIO_FILES = [["../data/en_example_v0.wav", "../data/en_example_labels_v0.json"],
                ["../data/en_example_v1.wav", "../data/en_example_labels_v1.json"]
                ]
 
-AVAILABLE_VAD_MODELS = ["webrtc", "silero"] 
+AVAILABLE_VAD_MODELS = ["webrtc", "silero", "pyannote"] 
 
 def run_benchmark(model_name, model_params, audio_path, label_audio_path):
     preds = {}
@@ -34,11 +38,11 @@ def run_benchmark(model_name, model_params, audio_path, label_audio_path):
         start = time.time()
         mem_start = get_memory_usage_mb()
         confidence = silero.get_confidence(wav_tensor[0])
-        timestamps = silero.get_predictions(wav_tensor[0])
+        frames = silero.get_predictions(wav_tensor[0])
         end = time.time()
         mem_end = get_memory_usage_mb()
         preds = {
-            "preds_ms": timestamps,
+            "preds_ms": frames,
             "confidence": confidence,
             "inference_time": end - start,
             "rtf": (end - start) / audio_duration,
@@ -60,10 +64,25 @@ def run_benchmark(model_name, model_params, audio_path, label_audio_path):
             "memory_KB": mem_end - mem_start
         }
 
+    elif model_name == "pyannote":
+        pyannotevad = PyAnnoteVAD(**model_params)
+        start = time.time()
+        mem_start = get_memory_usage_mb()
+        frames = pyannotevad.predict(audio_path)
+        end = time.time()
+        mem_end = get_memory_usage_mb()
+        preds = {
+            "preds_s": frames,
+            "inference_time": end - start,
+            "rtf": (end - start) / audio_duration,
+            "memory_KB": mem_end - mem_start
+        }
+
     truth = load_labels(label_audio_path)
-    preds_in_seconds = convert_predictions_to_seconds(preds["preds_ms"], sr)
-    preds["metrics"] = match_segments(preds_in_seconds, truth, threshold=0.5)
-    preds["preds_s"] = preds_in_seconds
+    if "preds_ms" in preds:
+        preds_in_seconds = convert_predictions_to_seconds(preds["preds_ms"], sr)
+        preds["preds_s"] = preds_in_seconds
+    preds["metrics"] = match_segments(preds["preds_s"], truth, threshold=0.5)
 
     return preds
 
@@ -133,9 +152,10 @@ def print_output(models, results, best_models):
 
 def run(args):
     log_dir = create_log_dirs(args.log_dir, args.models)
-    params_grids = init_grid_search(args.grid_search, args.grid_file, args.models)
-    results, best_models = benchmark_and_log_models(args.audio_files, params_grids, log_dir)
-    print_output(args.models, results, best_models)
+    params = init_params(args.grid_search, args.grid_file, args.models)
+    results, best_models = benchmark_and_log_models(args.audio_files, params, log_dir)
+    if results:
+        print_output(args.models, results, best_models)
 
 def main():
     parser = argparse.ArgumentParser()
