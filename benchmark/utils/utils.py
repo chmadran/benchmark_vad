@@ -9,11 +9,11 @@ import matplotlib.pyplot as plt
 from scipy.io import wavfile
 
 def process_data(path_audio):
-    sr, y = wavfile.read(path_audio)
+    sr, wav = wavfile.read(path_audio)
     wav_tensor = torchaudio.load(path_audio)
-    assert y.ndim == 1, "Audio must be mono." #TODO: add downmixing?
-    wav_bytes = y.tobytes()
-    return sr, y, wav_bytes, wav_tensor
+    assert wav.ndim == 1, "Audio must be mono." #TODO: add downmixing?
+    wav_bytes = wav.tobytes()
+    return sr, wav, wav_bytes, wav_tensor
 
 def load_labels(path_to_json):
     with open(path_to_json, 'r') as f:

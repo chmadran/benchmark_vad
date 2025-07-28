@@ -9,7 +9,7 @@ def compute_overlap(seg1, seg2):
     union = max(seg1[1], seg2[1]) - min(seg1[0], seg2[0])
     return intersection / union if union > 0 else 0
 
-def match_segments(predicted, ground_truth, threshold=0.5):
+def match_segments(predicted, ground_truth, threshold):
     TP = 0
     for pred in predicted:
         if any(compute_overlap(pred, gt) >= threshold for gt in ground_truth):
@@ -25,24 +25,25 @@ def match_segments(predicted, ground_truth, threshold=0.5):
         "f1": f1
         }
 
-
-def compare_model_metrics(models, all_results):
-    f1 = []
-    precision = []
-    recall = []
+def compare_model_metrics(models: list, all_results: list):
     mean_data = {}
 
     for model in models:
-        for result in all_results[model]:
-            f1.append(result["f1"])
-            precision.append(result["precision"])
-            recall.append(result["recall"])
-        
+        model_results = [r for r in all_results if r["model"] == model]
+
+        if not model_results:
+            continue 
+
+        f1_scores = [r["f1"] for r in model_results]
+        precision_scores = [r["precision"] for r in model_results]
+        recall_scores = [r["recall"] for r in model_results]
+
         mean_data[model] = {
-            "f1_mean" : np.mean(f1),
-            "precision_mean" : np.mean(precision),
-            "recall_mean" : np.mean(recall),
+            "f1_mean": np.mean(f1_scores),
+            "precision_mean": np.mean(precision_scores),
+            "recall_mean": np.mean(recall_scores),
         }
 
     df = pd.DataFrame(mean_data).T
     return df
+
