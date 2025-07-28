@@ -1,0 +1,22 @@
+[
+  {
+    "audio": "en_example_v0.wav",
+    "model": "webrtc",
+    "precision": 70.83333038194456,
+    "recall": 99.99999411764739,
+    "f1": 82.92682473765635,
+    "inference_time": 0.0044329166412353516,
+    "rtf": 7.388194402058919e-05,
+    "memory_MB": 0.421875
+  },
+  {
+    "audio": "en_example_v1.wav",
+    "model": "webrtc",
+    "precision": 70.83333038194456,
+    "recall": 99.99999411764739,
+    "f1": 82.92682473765635,
+    "inference_time": 0.0044002532958984375,
+    "rtf": 7.333755493164063e-05,
+    "memory_MB": 0.0
+  }
+]

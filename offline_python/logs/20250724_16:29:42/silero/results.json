@@ -1,0 +1,22 @@
+[
+  {
+    "audio": "en_example_v0.wav",
+    "model": "silero",
+    "precision": 92.30768520710114,
+    "recall": 70.58823114186875,
+    "f1": 79.99999417555591,
+    "inference_time": 0.566931962966919,
+    "rtf": 0.009448866049448649,
+    "memory_MB": 27.1875
+  },
+  {
+    "audio": "en_example_v1.wav",
+    "model": "silero",
+    "precision": 92.30768520710114,
+    "recall": 70.58823114186875,
+    "f1": 79.99999417555591,
+    "inference_time": 0.5449249744415283,
+    "rtf": 0.009082082907358806,
+    "memory_MB": 25.65625
+  }
+]
