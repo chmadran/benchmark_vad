@@ -1,4 +1,5 @@
 from pathlib import Path
+from collections import defaultdict
 import os
 import time
 import json
@@ -14,7 +15,7 @@ DEFAULT_AUDIO_FILES = [["../data/en_example_v0.wav", "../data/en_example_labels_
                ["../data/en_example_v1.wav", "../data/en_example_labels_v1.json"]
                ]
 
-def save_results(log_dir: Path, model: str, all_results: list):
+def save_results_global(log_dir: Path, model: str, all_results: list):
     """
     Save benchmarking results for a specific model to a JSON file.
 
@@ -27,6 +28,30 @@ def save_results(log_dir: Path, model: str, all_results: list):
     os.makedirs(os.path.dirname(model_log_path), exist_ok=True)
     with open(model_log_path, "w") as f:
         json.dump([r for r in all_results if r["model"] == model], f, indent=2)
+
+
+def save_results_per_audio(log_dir: Path, model: str, all_results: list):
+    """
+    Save all benchmarking results grouped by (model, audio) pair.
+
+    Args:
+        log_dir (Path): Directory to save result files.
+        all_results (list): List of individual result dictionaries.
+    """
+    grouped = defaultdict(list)
+
+    for result in all_results:
+        if result["model"] != model:
+            continue
+        audio_name = result["audio"]
+        grouped[audio_name].append(result)
+
+    for audio_name, results in grouped.items():
+        file_path = os.path.join(log_dir, model, f"{audio_name}.json")
+        os.makedirs(os.path.dirname(file_path), exist_ok=True)
+        with open(file_path, "w") as f:
+            json.dump(results, f, indent=2)
+
 
 def compute_overlap(seg1: tuple, seg2: tuple) -> float:
     """
@@ -95,6 +120,7 @@ def run_benchmark(model_name: str, model_params: dict, audio_path: Path, label_a
 
     Returns:
         dict: Dictionary containing:
+            - "experiment_id" : Id of the experiment (the hyperparameters tried).
             - "preds_s": List of predicted speech segments in seconds.
             - "inference_time": Total inference time in seconds.
             - "rtf": Real-time factor (inference_time / audio duration).
@@ -171,9 +197,8 @@ def benchmark_and_log_models(audio_paths:list, experiments:dict, log_dir:Path) -
         log_dir (Path): Directory where benchmark results will be stored per model.
 
     Returns:
-        tuple[list, dict]: 
+        list: 
             - A list of all benchmarking results (one per audio and param combination).
-            - A dictionary mapping each model to its best result based on F1 score.
     """
     all_results = []
 
@@ -187,7 +212,7 @@ def benchmark_and_log_models(audio_paths:list, experiments:dict, log_dir:Path) -
                 try:
                     predictions = run_benchmark(model, param, audio_path, label_path)
                     result = {
-                        "Audio": os.path.basename(audio_path),
+                        "audio": os.path.basename(audio_path),
                         "model": model,
                         **param,
                         **predictions["metrics"],
@@ -198,8 +223,9 @@ def benchmark_and_log_models(audio_paths:list, experiments:dict, log_dir:Path) -
                     all_results.append(result)
 
                 except Exception as e:
-                    print(f"[ERROR] Model: {model}, Params: {params}, Audio: {audio_path}, Reason: {e}")
+                    print(f"[ERROR] Model: {model}, Params: {params}, audio: {audio_path}, Reason: {e}")
 
-        save_results(log_dir, model, all_results)
+        save_results_global(log_dir, model, all_results)
+        save_results_per_audio(log_dir, model, all_results)
 
     return all_results

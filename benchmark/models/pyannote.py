@@ -13,6 +13,7 @@ logging.getLogger("pytorch_lightning").setLevel(logging.ERROR)
 class PyAnnoteVAD():
     
     def __init__(self, 
+                 experiment_id: int,
                  onset: float = 0.5,
                  offset: float = 0.5,
                  min_duration_on: float = 0.0,
@@ -31,6 +32,7 @@ class PyAnnoteVAD():
 
         pipeline.instantiate(self.hyperparameters)
         self.pipeline = pipeline
+        self.experiment_id = experiment_id
 
 
     def predict(self, wav_file):

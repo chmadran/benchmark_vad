@@ -9,6 +9,7 @@ class WebRTCVAD():
     def __init__(self,
                     mode: int,
                     sampling_rate: int,
+                    experiment_id: int,
                     window_size_sample: float = 0.03,
                     padding_duration_ms: int = 300, 
                     threshold_trigger: float = 0.9
@@ -25,8 +26,9 @@ class WebRTCVAD():
         if threshold_trigger > 1 or threshold_trigger < 0.1:
             raise ValueError(f"Invalid threshold_trigger: {threshold_trigger}, must be between 1 and 0.1.") 
 
-        self.window_size_sample = window_size_sample
         self.sampling_rate = sampling_rate
+        self.experiment_id = experiment_id
+        self.window_size_sample = window_size_sample
         self.padding_duration_ms = padding_duration_ms
         self.threshold_trigger = threshold_trigger
         self.model = webrtcvad.Vad()

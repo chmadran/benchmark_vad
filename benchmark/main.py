@@ -29,8 +29,10 @@ def run(args):
     
     if results:
         result_processor = PostProcessor(args.models, results)
-        result_processor.print_mean_results()
-        result_processor.compute_print_best_model(model_specific="silero", metric="F1")
+        # result_processor.print_mean_results_per_experiment()
+        # result_processor.compute_print_best_model(model_specific="", metric="F1")
+        result_processor.print_experiment_hyperparameters(model="silero", id=12)
+        result_processor.print_experiment_hyperparameters(model="webrtc", id=1)
 
 
 def main():

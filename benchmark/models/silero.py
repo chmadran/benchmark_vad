@@ -7,6 +7,7 @@ class SileroVAD():
 
     def __init__(self, 
                  sampling_rate: int,
+                 experiment_id = int,
                  threshold: float = 0.3, 
                  window_size_samples : int = 512, 
                  neg_threshold: float = None,
@@ -30,6 +31,7 @@ class SileroVAD():
         self.threshold = threshold
         self.model = load_silero_vad()
 
+        self.experiment_id = experiment_id
         self.window_size_samples = window_size_samples
         self.neg_threshold = neg_threshold
         self.visualize_probs = visualize_probs

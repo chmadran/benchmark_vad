@@ -64,8 +64,9 @@ def generate_experiments(params: dict):
     values = list(params.values())
     experiments = []
     
-    for combination in product(*values):
+    for idx, combination in enumerate(product(*values)):
         param_dict = dict(zip(keys, combination))
+        param_dict["experiment_id"] = idx
         experiments.append(param_dict)
     
     return experiments

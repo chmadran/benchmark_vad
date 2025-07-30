@@ -1,3 +1,4 @@
+from collections import defaultdict
 import pandas as pd
 import numpy as np
 from tabulate import tabulate
@@ -40,34 +41,64 @@ class PostProcessor:
         """
         return df.round({"F1": threshold, "Precision": threshold, "Recall": threshold})
 
-
-    def print_mean_results(self) -> pd.DataFrame:
+    def print_experiment_hyperparameters(self, model: str, id: int):
         """
-        Compute and display the mean F1, Precision, and Recall for each model.
+        Print the hyperparameters and other details of a specific experiment run
+        for a given model and experiment ID.
+
+        Args:
+            model (str): The name of the model to filter results by.
+            id (int): The experiment ID to filter results by.
+
+        Prints:
+            A formatted table displaying the hyperparameters and metrics
+            for the first matching experiment run.
+        """
+        for result in self.results:
+            if result["model"] == model and result["experiment_id"] == id:
+                print(f"\nPRINTING EXPERIMENT {id} for {model.upper()}\n")
+                df = pd.DataFrame([result])
+                print(tabulate(df, headers="keys", tablefmt="fancy_grid"))
+                return
+        print(f"\nEXPERIMENT {id} for {model.upper()} not found.\n")
+
+    
+    def print_mean_results_per_experiment(self) -> pd.DataFrame:
+        """
+        Compute and display the mean F1, Precision, and Recall for each (model, experiment_id) pair.
 
         Returns:
-            pd.DataFrame: DataFrame containing the mean metrics per model.
-        """       
-        model_results = []
-        mean_data = {}
-        for model in self.models:
-            model_results = [r for r in self.results if r["model"] == model]
-            if model_results:
-                f1_scores = [r["F1"] for r in model_results]
-                precision_scores = [r["Precision"] for r in model_results]
-                recall_scores = [r["Recall"] for r in model_results]
+            pd.DataFrame: DataFrame containing mean metrics per (model, experiment_id).
+        """
 
-                mean_data[model.upper()] = {
-                    "F1_mean": np.mean(f1_scores),
-                    "Precision_mean": np.mean(precision_scores),
-                    "Recall_mean": np.mean(recall_scores),
-                }
+        grouped_results = defaultdict(list)
+        for result in self.results:
+            model = result["model"]
+            experiment_id = result["experiment_id"]
+            grouped_results[(model, experiment_id)].append(result)
 
-        df = pd.DataFrame(mean_data).T
+        records = []
+        for (model, exp_id), results in grouped_results.items():
+            f1s = [r["F1"] for r in results]
+            ps = [r["Precision"] for r in results]
+            rs = [r["Recall"] for r in results]
+
+            records.append({
+                "Model": model.upper(),
+                "Experiment_ID": exp_id,
+                "F1_mean": np.mean(f1s),
+                "Precision_mean": np.mean(ps),
+                "Recall_mean": np.mean(rs),
+            })
+
+        df = pd.DataFrame(records)
+        df = df.sort_values(by=["Model", "Experiment_ID"]).reset_index(drop=True)
+
         print("\n\n")
-        print(f"MEAN MODEL(S){self.models} METRICS:\n")
+        print(f"MEAN METRICS PER MODEL AND EXPERIMENT:\n")
         print(tabulate(self.mean_round_df(df, threshold=2), headers="keys", tablefmt="fancy_grid"))
         print("\n\n")
+
         return df
 
 
