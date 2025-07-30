@@ -7,52 +7,130 @@ class PostProcessor:
         """
         Args:
             models (list): List of models that were benchmarked.
-            results (dict): List of result as dict per model following benchmark.
+            results (list): List of result dictionaries from benchmarking.
         """
         self.models = models
         self.results = results
+    
+    
+    def mean_round_df(self, df: pd.DataFrame, threshold: int = 2) -> pd.DataFrame:
+        """
+        Round the values in a DataFrame containing mean evaluation metrics.
 
-        def compare_model_metrics(self, models: list, all_results: list):
-            mean_data = {}
+        Args:
+            df (pd.DataFrame): DataFrame with mean scores for each model.
+            threshold (int): Number of decimal places to round to (default is 2).
 
-            for model in models:
-                model_results = [r for r in all_results if r["model"] == model]
+        Returns:
+            pd.DataFrame: Rounded DataFrame.
+        """
+        return df.round({"F1_mean": threshold, "Precision_mean": threshold, "Recall_mean": threshold})
 
-                if not model_results:
-                    continue 
 
-                f1_scores = [r["f1"] for r in model_results]
-                precision_scores = [r["precision"] for r in model_results]
-                recall_scores = [r["recall"] for r in model_results]
+    def round_df(self, df: pd.DataFrame, threshold: int = 2) -> pd.DataFrame:
+        """
+        Round the values in a DataFrame containing individual evaluation metrics.
 
-                mean_data[model] = {
-                    "f1_mean": np.mean(f1_scores),
-                    "precision_mean": np.mean(precision_scores),
-                    "recall_mean": np.mean(recall_scores),
+        Args:
+            df (pd.DataFrame): DataFrame with individual model results.
+            threshold (int): Number of decimal places to round to (default is 2).
+
+        Returns:
+            pd.DataFrame: Rounded DataFrame.
+        """
+        return df.round({"F1": threshold, "Precision": threshold, "Recall": threshold})
+
+
+    def print_mean_results(self) -> pd.DataFrame:
+        """
+        Compute and display the mean F1, Precision, and Recall for each model.
+
+        Returns:
+            pd.DataFrame: DataFrame containing the mean metrics per model.
+        """       
+        model_results = []
+        mean_data = {}
+        for model in self.models:
+            model_results = [r for r in self.results if r["model"] == model]
+            if model_results:
+                f1_scores = [r["F1"] for r in model_results]
+                precision_scores = [r["Precision"] for r in model_results]
+                recall_scores = [r["Recall"] for r in model_results]
+
+                mean_data[model.upper()] = {
+                    "F1_mean": np.mean(f1_scores),
+                    "Precision_mean": np.mean(precision_scores),
+                    "Recall_mean": np.mean(recall_scores),
                 }
 
-            df = pd.DataFrame(mean_data).T
-            return df
+        df = pd.DataFrame(mean_data).T
+        print("\n\n")
+        print(f"MEAN MODEL(S){self.models} METRICS:\n")
+        print(tabulate(self.mean_round_df(df, threshold=2), headers="keys", tablefmt="fancy_grid"))
+        print("\n\n")
+        return df
 
 
-        def round_df(df):
-            return df.round({"f1_mean": 2, "precision_mean": 2, "recall_mean": 2})
+    def print_best_set_hyperparams(self, best_model: dict, metric: str) -> None:
+        """
+        Print the hyperparameters and evaluation metrics for a single best-performing model.
 
-        def print_output(self, models: list, results: list):
-            all_df = compare_model_metrics(models, results)
-            print("\nMEAN METRICS FOR ALL PREDICTIONS:\n")
-            print(tabulate(round_df(all_df), headers="keys", tablefmt="pretty"))
+        Args:
+            best_model (dict): Dictionary containing model configuration and evaluation metrics.
+            metric (str): The metric used to select the best model (e.g., "F1").
+        """
+        df = pd.DataFrame([best_model]) 
+        print("\n")
+        print(f"Best hyperparameters for {best_model["model"].upper()} based on metric : {metric}\n")
+        print(tabulate(self.round_df(df, threshold=2), headers="keys", tablefmt="fancy_grid"))
+        print("\n")
 
 
-        def print_best_models(self, models: list, best_models: dict):
-            best_results = list(best_models.values())
-            best_df = compare_model_metrics(models, best_results)
-            print("\nBEST MODEL METRICS:\n")
-            print(tabulate(round_df(best_df), headers="keys", tablefmt="pretty"))
+    def compute_best_set_hyperparams(self, model: str, metric: str) -> pd.DataFrame:
+        """
+        Computes and display the hyperparameters and the metrics (F1, precision, and recall) for
+            the best model of each model that was benchmarked based on its performance on 
+            the specified metric.
 
-            print("\nBEST MODEL CONFIGS (based on f1):\n")
-            for model, config in best_models.items():
-                print(f"\n→ {model.upper()}")
-                for k, v in config.items():
-                    if k not in {"preds_ms", "confidence", "preds_s"}:
-                        print(f"  {k}: {v}")
+        Args:
+            metric(str): Metric to choose what "best" means.
+
+        Returns:
+            pd.DataFrame: DataFrame containing the hyperparameters and results based on the specified metric, per model.
+        """   
+
+        best_score = -1
+        best_model = {}
+        model_results = [r for r in self.results if r["model"] == model]
+        for result in model_results:
+            if result[metric] > best_score:
+                best_score =  result[metric] 
+                best_model = result
+        return best_model
+
+
+    def compute_print_best_model(self, metric: str, model_specific: str = None) -> None:
+        """
+        Computes and prints the best hyperparameter set and corresponding metrics 
+        (F1, Precision, Recall) for each model based on the specified metric.
+
+        If a specific model is provided, only that model is processed. Otherwise, 
+        all models in `self.models` are processed.
+
+        Args:
+            metric (str): The metric used to determine the best model (e.g., "F1", "Precision", "Recall").
+            model_specific (str, optional): The name of a specific model to evaluate. Defaults to None.
+
+        Returns:
+            None
+        """
+        metric = metric.title() #in case i write the metric wrong, putting it back in CamelCases
+        if model_specific:
+            best_model = self.compute_best_set_hyperparams(model_specific, metric)
+            if best_model:
+                self.print_best_set_hyperparams(best_model, metric)
+        else:
+            for model in self.models:
+                best_model = self.compute_best_set_hyperparams(model, metric)
+                if best_model:
+                    self.print_best_set_hyperparams(best_model, metric)

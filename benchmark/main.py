@@ -29,6 +29,9 @@ def run(args):
     
     if results:
         result_processor = PostProcessor(args.models, results)
+        result_processor.print_mean_results()
+        result_processor.compute_print_best_model(model_specific="silero", metric="F1")
+
 
 def main():
     parser = argparse.ArgumentParser()

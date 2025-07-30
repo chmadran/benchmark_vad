@@ -78,9 +78,9 @@ def match_segments(predicted: list[tuple[float, float]], ground_truth: tuple[flo
     recall = TP / (TP + FN + 1e-6) * 100
     f1 = 2 * precision * recall / (precision + recall + 1e-6) 
     return {
-        "precision" : precision, 
-        "recall" : recall, 
-        "f1": f1
+        "Precision" : precision, 
+        "Recall" : recall, 
+        "F1": f1
         }
 
 def run_benchmark(model_name: str, model_params: dict, audio_path: Path, label_audio_path: Path):
@@ -176,41 +176,30 @@ def benchmark_and_log_models(audio_paths:list, experiments:dict, log_dir:Path) -
             - A dictionary mapping each model to its best result based on F1 score.
     """
     all_results = []
-    best_models = {} 
 
     if not audio_paths:
         audio_paths = DEFAULT_AUDIO_FILES
 
     for model, params in experiments.items():
-        best_model_result = None
-        best_f1 = -1
-
         print(f"\n RUNNING BENCHMARK FOR {model.upper()}")
         for param in tqdm(params):
             for audio_path, label_path in audio_paths:
                 try:
                     predictions = run_benchmark(model, param, audio_path, label_path)
                     result = {
-                        "audio": os.path.basename(audio_path),
+                        "Audio": os.path.basename(audio_path),
                         "model": model,
                         **param,
                         **predictions["metrics"],
-                        "inference_time": predictions["inference_time"],
-                        "rtf": predictions["rtf"],
-                        "memory_KB": predictions["memory_KB"] * 1024,
+                        "Inference_time": predictions["inference_time"],
+                        "RTF": predictions["rtf"],
+                        "Memory_KB": predictions["memory_KB"] * 1024,
                     }
                     all_results.append(result)
-
-                    if result["f1"] > best_f1:
-                        best_f1 = result["f1"]
-                        best_model_result = result
 
                 except Exception as e:
                     print(f"[ERROR] Model: {model}, Params: {params}, Audio: {audio_path}, Reason: {e}")
 
-        if best_model_result:
-            best_models[model] = best_model_result
-
         save_results(log_dir, model, all_results)
 
-    return all_results, best_models
+    return all_results
