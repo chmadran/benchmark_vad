@@ -5,7 +5,6 @@ import json
 from tqdm import tqdm
 
 from utils.utils import process_data, load_labels, convert_predictions_to_seconds, get_memory_usage_mb
-from post_process.post_process import match_segments
 
 from models.silero import SileroVAD
 from models.webrtc import WebRTCVAD
