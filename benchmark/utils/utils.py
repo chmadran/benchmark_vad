@@ -9,10 +9,10 @@ import librosa.display
 import matplotlib.pyplot as plt
 from scipy.io import wavfile
 
-def create_log_dirs(args_log_dir, args_models):
-    log_dir = os.path.join(str(args_log_dir), datetime.now().strftime("%Y%m%d_%H:%M:%S"))
+def create_log_dirs(log_dir, xp_name, models):
+    log_dir = os.path.join(str(log_dir), xp_name, datetime.now().strftime("%Y%m%d_%H:%M:%S"))    
     os.makedirs(log_dir, exist_ok=True)
-    for model in args_models:
+    for model in models:
         model_log_dir = os.path.join(log_dir, model)
         try :
             os.makedirs(model_log_dir, exist_ok=True)

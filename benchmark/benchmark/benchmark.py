@@ -24,7 +24,7 @@ def save_results_global(log_dir: Path, model: str, all_results: list):
         model (str): Name of the model whose results should be saved.
         all_results (list): List of result dictionaries from all benchmarks.
     """
-    model_log_path = os.path.join(log_dir, model, "results.json")
+    model_log_path = os.path.join(log_dir, model, "global_results.json")
     os.makedirs(os.path.dirname(model_log_path), exist_ok=True)
     with open(model_log_path, "w") as f:
         json.dump([r for r in all_results if r["model"] == model], f, indent=2)

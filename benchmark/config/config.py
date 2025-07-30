@@ -1,6 +1,7 @@
 from pathlib import Path
 from itertools import product
 import json
+import os
 
 
 DEFAULT_PARAMS = {
@@ -71,7 +72,7 @@ def generate_experiments(params: dict):
     
     return experiments
 
-def init_experiments_from_config(config_file: Path, models: list) -> dict:
+def init_experiments_from_config(config_file: Path, models: list, log_dir: str) -> dict:
     """
     Initialize list of experiments to run for each model based on config.
 
@@ -88,6 +89,9 @@ def init_experiments_from_config(config_file: Path, models: list) -> dict:
 
     for model in models:
         params = load_config(config_file, model)  
+        dest_file = os.path.join(log_dir, model, f"{model}_config.json")
+        with open(dest_file, "w") as f:
+            json.dump(params, f)
         experiments[model] = generate_experiments(params)
 
     return experiments

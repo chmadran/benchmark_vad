@@ -19,9 +19,9 @@ AVAILABLE_VAD_MODELS = ["webrtc", "silero", "pyannote"]
 
 
 def run(args):
-    log_dir = create_log_dirs(args.log_dir, args.models)
+    log_dir = create_log_dirs(args.log_dir, args.xp_name, args.models)
 
-    experiments = init_experiments_from_config(args.config_file, args.models)
+    experiments = init_experiments_from_config(args.config_file, args.models, log_dir)
     if not experiments:
             print("No valid experiments were generated.")
             return
@@ -31,8 +31,8 @@ def run(args):
         result_processor = PostProcessor(args.models, results)
         # result_processor.print_mean_results_per_experiment()
         # result_processor.compute_print_best_model(model_specific="", metric="F1")
-        result_processor.print_experiment_hyperparameters(model="silero", id=12)
-        result_processor.print_experiment_hyperparameters(model="webrtc", id=1)
+        # result_processor.print_experiment_hyperparameters(model="silero", id=12)
+        # result_processor.print_experiment_hyperparameters(model="webrtc", id=1)
 
 
 def main():
@@ -41,6 +41,11 @@ def main():
     parser.add_argument(
         "--models", required=True, nargs='*', choices=AVAILABLE_VAD_MODELS,
         help="List of models to benchmark.",
+    )
+
+    parser.add_argument(
+        "--xp_name", required=False, type=str, default="unknown_xp",
+        help="Name of experiment being launched.",
     )
 
     parser.add_argument(
