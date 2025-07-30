@@ -29,6 +29,61 @@ def save_results(log_dir: Path, model: str, all_results: list):
     with open(model_log_path, "w") as f:
         json.dump([r for r in all_results if r["model"] == model], f, indent=2)
 
+def compute_overlap(seg1: tuple, seg2: tuple) -> float:
+    """
+    Compute the "Intersection over Union" (IoU) between two time segments.
+
+    Each segment is represented as a tuple or list of two floats: (start_time, end_time).
+    IoU is calculated as the ratio of the duration of the intersection to the duration of the union.
+
+    Args:
+        seg1 (tuple): First segment (start_time, end_time) in seconds.
+        seg2 (tuple): Second segment (start_time, end_time) in seconds.
+
+    Returns:
+        float: IoU score between 0 and 1. Returns 0 if the segments do not overlap.
+    """
+    start = max(seg1[0], seg2[0])
+    end = min(seg1[1], seg2[1])
+    intersection = max(0, end - start)
+    union = max(seg1[1], seg2[1]) - min(seg1[0], seg2[0])
+    return intersection / union if union > 0 else 0
+
+def match_segments(predicted: list[tuple[float, float]], ground_truth: tuple[float, float], threshold: float) -> dict:
+    """
+    Match predicted speech segments to ground truth segments using an IoU threshold,
+    and compute evaluation metrics: precision, recall, and F1-score.
+
+    A predicted segment is considered a true positive if it overlaps with any ground truth
+    segment with IoU ≥ threshold. Remaining unmatched predicted segments are false positives,
+    and unmatched ground truth segments are false negatives.
+
+    Args:
+        predicted (list of tuple): List of predicted segments, each as (start_time, end_time) in seconds.
+        ground_truth (list of tuple): List of ground truth segments, each as (start_time, end_time) in seconds.
+        threshold (float): IoU threshold for determining a match (between 0 and 1).
+
+    Returns:
+        dict: Dictionary with evaluation metrics:
+            - "precision": Precision percentage (TP / (TP + FP)) × 100
+            - "recall": Recall percentage (TP / (TP + FN)) × 100
+            - "f1": F1-score percentage (harmonic mean of precision and recall)
+    """
+    TP = 0
+    for pred in predicted:
+        if any(compute_overlap(pred, gt) >= threshold for gt in ground_truth):
+            TP += 1
+    FP = len(predicted) - TP
+    FN = len(ground_truth) - TP
+    precision = TP / (TP + FP + 1e-6) * 100
+    recall = TP / (TP + FN + 1e-6) * 100
+    f1 = 2 * precision * recall / (precision + recall + 1e-6) 
+    return {
+        "precision" : precision, 
+        "recall" : recall, 
+        "f1": f1
+        }
+
 def run_benchmark(model_name: str, model_params: dict, audio_path: Path, label_audio_path: Path):
     """
     Run a VAD benchmark for a given model and parameter configuration on a single audio file.

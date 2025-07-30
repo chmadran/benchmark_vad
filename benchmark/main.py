@@ -1,5 +1,4 @@
 import torch
-from tabulate import tabulate
 from tqdm import tqdm
 from pathlib import Path
 import argparse
@@ -7,10 +6,10 @@ from datetime import datetime
 import pandas as pd
 import numpy as np
 
-from utils.utils import create_log_dirs
-from post_process.post_process import compare_model_metrics
 from config.config import init_experiments_from_config
+from utils.utils import create_log_dirs
 from benchmark.benchmark import benchmark_and_log_models
+from post_process.post_process import PostProcessor
 
 #TODO: Pre and Post processing of the audio could be improved honestly, maybe in a class?
 #TODO: Handling of parameters is dirty af
@@ -18,28 +17,6 @@ from benchmark.benchmark import benchmark_and_log_models
 
 AVAILABLE_VAD_MODELS = ["webrtc", "silero", "pyannote"] 
 
-def round_df(df):
-    return df.round({"f1_mean": 2, "precision_mean": 2, "recall_mean": 2})
-
-
-def print_output(models: list, results: list):
-    all_df = compare_model_metrics(models, results)
-    print("\nMEAN METRICS FOR ALL PREDICTIONS:\n")
-    print(tabulate(round_df(all_df), headers="keys", tablefmt="pretty"))
-
-
-def print_best_models(models: list, best_models: dict):
-    best_results = list(best_models.values())
-    best_df = compare_model_metrics(models, best_results)
-    print("\nBEST MODEL METRICS:\n")
-    print(tabulate(round_df(best_df), headers="keys", tablefmt="pretty"))
-
-    print("\nBEST MODEL CONFIGS (based on f1):\n")
-    for model, config in best_models.items():
-        print(f"\n→ {model.upper()}")
-        for k, v in config.items():
-            if k not in {"preds_ms", "confidence", "preds_s"}:
-                print(f"  {k}: {v}")
 
 def run(args):
     log_dir = create_log_dirs(args.log_dir, args.models)
@@ -48,12 +25,10 @@ def run(args):
     if not experiments:
             print("No valid experiments were generated.")
             return
-    
-    results, best_models = benchmark_and_log_models(args.audio_files, experiments, log_dir)
+    results = benchmark_and_log_models(args.audio_files, experiments, log_dir)
     
     if results:
-        print_output(args.models, results)
-        print_best_models(args.models, best_models)
+        result_processor = PostProcessor(args.models, results)
 
 def main():
     parser = argparse.ArgumentParser()
