@@ -1,4 +1,5 @@
 import torch
+import os
 import warnings
 import logging
 import numpy as np
@@ -8,7 +9,6 @@ from pyannote.audio.pipelines import VoiceActivityDetection
 warnings.filterwarnings("ignore")
 logging.getLogger("pytorch_lightning").setLevel(logging.ERROR)
 
-HF_TOKEN = "to add"
 
 class PyAnnoteVAD():
     
@@ -19,7 +19,7 @@ class PyAnnoteVAD():
                  min_duration_off: float = 0.0,
                  ):
         model = Model.from_pretrained("pyannote/segmentation", 
-                                    use_auth_token=HF_TOKEN)
+                                    use_auth_token=os.environ['HF_TOKEN'])
         
         self.hyperparameters = {
             "onset": onset,

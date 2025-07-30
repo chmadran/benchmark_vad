@@ -1,0 +1,162 @@
+from pathlib import Path
+import os
+import time
+import json
+from tqdm import tqdm
+
+from utils.utils import process_data, load_labels, convert_predictions_to_seconds, get_memory_usage_mb
+from post_process.post_process import match_segments
+
+from models.silero import SileroVAD
+from models.webrtc import WebRTCVAD
+from models.pyannote import PyAnnoteVAD
+
+DEFAULT_AUDIO_FILES = [["../data/en_example_v0.wav", "../data/en_example_labels_v0.json"],
+               ["../data/en_example_v1.wav", "../data/en_example_labels_v1.json"]
+               ]
+
+def save_results(log_dir: Path, model: str, all_results: list):
+    """
+    Save benchmarking results for a specific model to a JSON file.
+
+    Args:
+        log_dir (Path): Directory where the results should be saved.
+        model (str): Name of the model whose results should be saved.
+        all_results (list): List of result dictionaries from all benchmarks.
+    """
+    model_log_path = os.path.join(log_dir, model, "results.json")
+    os.makedirs(os.path.dirname(model_log_path), exist_ok=True)
+    with open(model_log_path, "w") as f:
+        json.dump([r for r in all_results if r["model"] == model], f, indent=2)
+
+def run_benchmark(model_name: str, model_params: dict, audio_path: Path, label_audio_path: Path):
+    """
+    Run a VAD benchmark for a given model and parameter configuration on a single audio file.
+
+    Args:
+        model_name (str): Name of the VAD model to benchmark ("silero", "webrtc", or "pyannote").
+        model_params (dict): Dictionary of hyperparameters to initialize the model with.
+        audio_path (Path): Path to the input audio file.
+        label_audio_path (Path): Path to the label file for the audio.
+
+    Returns:
+        dict: Dictionary containing:
+            - "preds_s": List of predicted speech segments in seconds.
+            - "inference_time": Total inference time in seconds.
+            - "rtf": Real-time factor (inference_time / audio duration).
+            - "memory_KB": Memory usage during inference in KB.
+            - "metrics": Evaluation metrics computed by `match_segments` (e.g F1 score, precision, recall).
+            - (optional) "confidence": Model confidence score.
+            - (optional) "preds_ms": Raw prediction output in milliseconds.
+    """
+    preds = {}
+    sr, wav, wav_bytes, wav_tensor = process_data(audio_path)
+    audio_duration = len(wav) / sr
+
+    if model_name == "silero":
+        silero = SileroVAD(sampling_rate=sr, **model_params)
+        start = time.time()
+        mem_start = get_memory_usage_mb()
+        confidence = silero.get_confidence(wav_tensor[0])
+        frames = silero.get_predictions(wav_tensor[0])
+        end = time.time()
+        mem_end = get_memory_usage_mb()
+        preds = {
+            "preds_ms": frames,
+            "confidence": confidence,
+            "inference_time": end - start,
+            "rtf": (end - start) / audio_duration,
+            "memory_KB": mem_end - mem_start
+        }
+
+    elif model_name == "webrtc":
+        webrtc = WebRTCVAD(sampling_rate=sr, **model_params)
+        start = time.time()
+        mem_start = get_memory_usage_mb()
+        frames = webrtc.predict(wav, wav_bytes)
+        end = time.time()
+        mem_end = get_memory_usage_mb()
+        frames = webrtc.merge_speech_segments(frames)
+        preds = {
+            "preds_ms": frames,
+            "inference_time": end - start,
+            "rtf": (end - start) / audio_duration,
+            "memory_KB": mem_end - mem_start
+        }
+
+    elif model_name == "pyannote":
+        pyannotevad = PyAnnoteVAD(**model_params)
+        start = time.time()
+        mem_start = get_memory_usage_mb()
+        frames = pyannotevad.predict(audio_path)
+        end = time.time()
+        mem_end = get_memory_usage_mb()
+        preds = {
+            "preds_s": frames,
+            "inference_time": end - start,
+            "rtf": (end - start) / audio_duration,
+            "memory_KB": mem_end - mem_start
+        }
+
+    truth = load_labels(label_audio_path)
+    if "preds_s" not in preds:
+        preds_in_seconds = convert_predictions_to_seconds(preds["preds_ms"], sr)
+        preds["preds_s"] = preds_in_seconds
+    preds["metrics"] = match_segments(preds["preds_s"], truth, threshold=0.5)
+
+    return preds
+
+def benchmark_and_log_models(audio_paths:list, experiments:dict, log_dir:Path) -> tuple[list, dict]:
+    """
+    Run benchmarking for multiple models across parameter combinations and audio files, 
+    and log the results.
+
+    Args:
+        audio_paths (list): List of (audio_path, label_path) tuples. Falls back to DEFAULT_AUDIO_FILES if empty.
+        experiments (dict): A dictionary mapping model names to lists of parameter combinations.
+        log_dir (Path): Directory where benchmark results will be stored per model.
+
+    Returns:
+        tuple[list, dict]: 
+            - A list of all benchmarking results (one per audio and param combination).
+            - A dictionary mapping each model to its best result based on F1 score.
+    """
+    all_results = []
+    best_models = {} 
+
+    if not audio_paths:
+        audio_paths = DEFAULT_AUDIO_FILES
+
+    for model, params in experiments.items():
+        best_model_result = None
+        best_f1 = -1
+
+        print(f"\n RUNNING BENCHMARK FOR {model.upper()}")
+        for param in tqdm(params):
+            for audio_path, label_path in audio_paths:
+                try:
+                    predictions = run_benchmark(model, param, audio_path, label_path)
+                    result = {
+                        "audio": os.path.basename(audio_path),
+                        "model": model,
+                        **param,
+                        **predictions["metrics"],
+                        "inference_time": predictions["inference_time"],
+                        "rtf": predictions["rtf"],
+                        "memory_KB": predictions["memory_KB"] * 1024,
+                    }
+                    all_results.append(result)
+
+                    if result["f1"] > best_f1:
+                        best_f1 = result["f1"]
+                        best_model_result = result
+
+                except Exception as e:
+                    print(f"[ERROR] Model: {model}, Params: {params}, Audio: {audio_path}, Reason: {e}")
+
+        if best_model_result:
+            best_models[model] = best_model_result
+
+        save_results(log_dir, model, all_results)
+
+    return all_results, best_models
