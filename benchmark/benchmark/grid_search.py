@@ -1,9 +1,11 @@
-from pathlib import Path
 from collections import defaultdict
+from tabulate import tabulate
+from pathlib import Path
+from tqdm import tqdm
+import pandas as pd
 import os
 import time
 import json
-from tqdm import tqdm
 
 from utils.utils import process_data, load_labels, convert_predictions_to_seconds, get_memory_usage_mb
 
@@ -11,9 +13,32 @@ from models.silero import SileroVAD
 from models.webrtc import WebRTCVAD
 from models.pyannote import PyAnnoteVAD
 
-DEFAULT_AUDIO_FILES = [["../data/en_example_v0.wav", "../data/en_example_labels_v0.json"],
-               ["../data/en_example_v1.wav", "../data/en_example_labels_v1.json"]
-               ]
+def round_df(df: pd.DataFrame, threshold: int = 2) -> pd.DataFrame:
+    """
+    Round the values in a DataFrame containing individual evaluation metrics.
+
+    Args:
+        df (pd.DataFrame): DataFrame with individual model results.
+        threshold (int): Number of decimal places to round to (default is 2).
+
+    Returns:
+        pd.DataFrame: Rounded DataFrame.
+    """
+    return df.round({"F1": threshold, "Precision": threshold, "Recall": threshold})
+
+def print_best_model(best_model: dict, metric: str) -> None:
+    """
+    Print the hyperparameters and evaluation metrics for a single best-performing model.
+
+    Args:
+        best_model (dict): Dictionary containing model configuration and evaluation metrics.
+        metric (str): The metric used to select the best model (e.g., "F1").
+    """
+    df = pd.DataFrame([best_model]) 
+    print("\n")
+    print(f"Best hyperparameters for {best_model["model"].upper()} based on metric : {metric}\n")
+    print(tabulate(round_df(df, threshold=2), headers="keys", tablefmt="fancy_grid"))
+    print("\n")
 
 def save_results_global(log_dir: Path, model: str, all_results: list):
     """
@@ -24,11 +49,29 @@ def save_results_global(log_dir: Path, model: str, all_results: list):
         model (str): Name of the model whose results should be saved.
         all_results (list): List of result dictionaries from all benchmarks.
     """
-    model_log_path = os.path.join(log_dir, model, "global_results.json")
+    model_log_path = os.path.join(log_dir, model, "grid_search", "global_results.json")
     os.makedirs(os.path.dirname(model_log_path), exist_ok=True)
     with open(model_log_path, "w") as f:
         json.dump([r for r in all_results if r["model"] == model], f, indent=2)
 
+def save_results_per_model_csv(results: dict, log_dir: Path):
+    """
+    Save benchmarking results for a specific model to a CSV file.
+
+    Args:
+        log_dir (Path): Directory where the results should be saved.
+        results (dict): Dict with keys = model name and values results dictionaries from all benchmarks.
+    """
+
+    for model, results in results.items():
+        df = pd.DataFrame(results)
+        param_df = df["parameters"].apply(pd.Series)
+        df= df.drop(columns=["model", "parameters"])
+        df = pd.concat([df, param_df], axis=1)
+        csv_filename = os.path.join(log_dir, model, "grid_search", "benchmark_results.csv")
+        os.makedirs(os.path.dirname(csv_filename), exist_ok=True)
+        df.to_csv(csv_filename, index=False)
+    
 
 def save_results_per_audio(log_dir: Path, model: str, all_results: list):
     """
@@ -43,11 +86,11 @@ def save_results_per_audio(log_dir: Path, model: str, all_results: list):
     for result in all_results:
         if result["model"] != model:
             continue
-        audio_name = result["audio"]
+        audio_name, _ = os.path.splitext(result["audio"])
         grouped[audio_name].append(result)
 
     for audio_name, results in grouped.items():
-        file_path = os.path.join(log_dir, model, f"{audio_name}.json")
+        file_path = os.path.join(log_dir, model, "grid_search", f"{audio_name}.json")
         os.makedirs(os.path.dirname(file_path), exist_ok=True)
         with open(file_path, "w") as f:
             json.dump(results, f, indent=2)
@@ -186,7 +229,8 @@ def run_benchmark(model_name: str, model_params: dict, audio_path: Path, label_a
 
     return preds
 
-def benchmark_and_log_models(audio_paths:list, experiments:dict, log_dir:Path) -> tuple[list, dict]:
+
+def run_grid_search(dataset:list, experiments:dict, log_dir:Path) -> tuple[list, dict]:
     """
     Run benchmarking for multiple models across parameter combinations and audio files, 
     and log the results.
@@ -200,32 +244,41 @@ def benchmark_and_log_models(audio_paths:list, experiments:dict, log_dir:Path) -
         list: 
             - A list of all benchmarking results (one per audio and param combination).
     """
-    all_results = []
-
-    if not audio_paths:
-        audio_paths = DEFAULT_AUDIO_FILES
+    results = {}
+    best_models = {}
+    inference_experiments = {}
 
     for model, params in experiments.items():
-        print(f"\n RUNNING BENCHMARK FOR {model.upper()}")
+        best_score = -1
+        all_results = []
+        print(f"\n RUNNING GRID SEARCH FOR {model.upper()}")
         for param in tqdm(params):
-            for audio_path, label_path in audio_paths:
+            for raw_audio_path, label_audio_path in dataset:
                 try:
-                    predictions = run_benchmark(model, param, audio_path, label_path)
+                    predictions = run_benchmark(model, param, raw_audio_path, label_audio_path)
                     result = {
-                        "audio": os.path.basename(audio_path),
+                        "audio": os.path.basename(raw_audio_path),
                         "model": model,
-                        **param,
+                        "parameters" : param, 
                         **predictions["metrics"],
                         "Inference_time": predictions["inference_time"],
                         "RTF": predictions["rtf"],
                         "Memory_KB": predictions["memory_KB"] * 1024,
                     }
                     all_results.append(result)
+                    if result["F1"] > best_score:
+                        best_score =  result["F1"] 
+                        best_model = result
 
                 except Exception as e:
-                    print(f"[ERROR] Model: {model}, Params: {params}, audio: {audio_path}, Reason: {e}")
+                    print(f"[ERROR] Model: {model}, Params: {params}, audio: {raw_audio_path}, Reason: {e}")
 
-        save_results_global(log_dir, model, all_results)
-        save_results_per_audio(log_dir, model, all_results)
+        best_models[model] = [best_model]
+        inference_experiments[model] = [best_model["parameters"]]
+        results[model] = all_results
+        print_best_model(best_model, metric="F1")
+        # save_results_global(log_dir, model, all_results)
+        # save_results_per_audio(log_dir, model, all_results)
+        save_results_per_model_csv(results, log_dir)
 
-    return all_results
+    return best_models, inference_experiments

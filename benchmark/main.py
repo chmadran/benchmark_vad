@@ -8,8 +8,10 @@ import numpy as np
 
 from config.config import init_experiments_from_config
 from utils.utils import create_log_dirs
-from benchmark.benchmark import benchmark_and_log_models
+from benchmark.inference import run_inference
+from benchmark.grid_search import run_grid_search
 from post_process.post_process import PostProcessor
+from dataset.dataset import split_dataset_for_grid_search
 
 #TODO: Pre and Post processing of the audio could be improved honestly, maybe in a class?
 #TODO: Handling of parameters is dirty af
@@ -17,22 +19,16 @@ from post_process.post_process import PostProcessor
 
 AVAILABLE_VAD_MODELS = ["webrtc", "silero", "pyannote"] 
 
-
 def run(args):
     log_dir = create_log_dirs(args.log_dir, args.xp_name, args.models)
+    grid_search_dataset, inference_dataset = split_dataset_for_grid_search(args.path_audio_files, args.grid_search_dataset_percentage, shuffle=False)
 
-    experiments = init_experiments_from_config(args.config_file, args.models, log_dir)
-    if not experiments:
-            print("No valid experiments were generated.")
-            return
-    results = benchmark_and_log_models(args.audio_files, experiments, log_dir)
-    
-    if results:
-        result_processor = PostProcessor(args.models, results)
-        # result_processor.print_mean_results_per_experiment()
-        # result_processor.compute_print_best_model(model_specific="", metric="F1")
-        # result_processor.print_experiment_hyperparameters(model="silero", id=12)
-        # result_processor.print_experiment_hyperparameters(model="webrtc", id=1)
+    grid_search_experiments = init_experiments_from_config(args.config_file, args.models, log_dir)
+    best_models, inference_experiments = run_grid_search(grid_search_dataset, grid_search_experiments, log_dir)
+    predictions = run_inference(inference_dataset, inference_experiments, log_dir)
+
+    if predictions:
+        result_processor = PostProcessor(args.models, predictions)
 
 
 def main():
@@ -49,8 +45,13 @@ def main():
     )
 
     parser.add_argument(
-        "--audio_files", required=False, type=list[list],
-        help="List of path with .wav audio and corresponding labels."
+        "--grid_search_dataset_percentage", required=False, type=int, default=25,
+        help="Percentage of the dataset that is used for the gridsearch.",
+    )
+
+    parser.add_argument(
+        "--path_audio_files", required=False, type=list[list],
+        help="Path of folder containing .wav audio and corresponding labels."
     )
 
     parser.add_argument( #TODO: Turn off logging if we want?

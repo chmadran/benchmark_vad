@@ -140,7 +140,7 @@ class PostProcessor:
         return best_model
 
 
-    def compute_print_best_model(self, metric: str, model_specific: str = None) -> None:
+    def print_best_model(self, metric: str, model_specific: str = None) -> None:
         """
         Computes and prints the best hyperparameter set and corresponding metrics 
         (F1, Precision, Recall) for each model based on the specified metric.

@@ -6,11 +6,11 @@ import os
 
 DEFAULT_PARAMS = {
     "webrtc": {
-        "mode": [0],  
-        "window_size_samples": [0.01], 
+        "mode": [2],  
+        "window_size_samples": [0.03], 
     },
     "silero": {
-        "threshold": [0.2], 
+        "threshold": [0.9], 
     },
     "pyannote": {
         "onset": [0.5], 
