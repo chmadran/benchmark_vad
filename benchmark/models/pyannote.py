@@ -52,10 +52,12 @@ class PyAnnoteVAD(BaseVAD):
         return formatted_preds
 
     def predict(self) -> dict:
-        signal = self.audio["signal_tensor"]
-        frames = self.get_predictions(signal)
+        preds = self.pipeline(self.audio["file_path"])
+        frames = [(segment.start, segment.end) for segment in preds.get_timeline().support()]
+        metrics = BaseVAD.match_segments(frames, self.audio["labels"], threshold=0.5)
 
         return {
             "preds_s": frames,
-            "metrics": BaseVAD.match_segments(frames, self.audio["labels"], threshold=0.5)
+            "metrics": metrics
         }
+    
