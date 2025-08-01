@@ -1,13 +1,14 @@
 from silero_vad import (load_silero_vad, get_speech_timestamps)
 import torch 
+from models.base import BaseVAD
 
 #https://github.com/snakers4/silero-vad/blob/master/src/silero_vad/utils_vad.py
 #TODO: Add input sanitization
-class SileroVAD():
+class SileroVAD(BaseVAD):
 
     def __init__(self, 
-                 sampling_rate: int,
-                 experiment_id = int,
+                 audio: dict,
+                 experiment_id: int,
                  threshold: float = 0.3, 
                  window_size_samples : int = 512, 
                  neg_threshold: float = None,
@@ -20,17 +21,17 @@ class SileroVAD():
                  min_speech_duration_ms: float = 250,
                  ):
         
-        
-        if sampling_rate not in {8000, 16000}:
-            raise ValueError(f"Invalid sampling_rate: {sampling_rate}, must be 8kHz or 16kHz")
+        super().__init__(audio, experiment_id=experiment_id)
+
+        self.audio = audio
+        if audio["sample_rate"] not in {8000, 16000}:
+            raise ValueError(f"Invalid sampling_rate: {audio["sample_rate"]}, must be 8kHz or 16kHz")
 
         if threshold < 0 or threshold > 1:
             raise ValueError(f"Invalid threshold: {threshold}, cannot be below 0 or above 1.")
 
-        self.sampling_rate = sampling_rate
         self.threshold = threshold
         self.model = load_silero_vad()
-
         self.experiment_id = experiment_id
         self.window_size_samples = window_size_samples
         self.neg_threshold = neg_threshold
@@ -43,14 +44,14 @@ class SileroVAD():
         self.min_speech_duration_ms = min_speech_duration_ms
 
     def get_confidence(self, wav):
-        predict = self.model.audio_forward(wav, sr=self.sampling_rate)
+        predict = self.model.audio_forward(wav, sr=self.audio["sample_rate"])
         return predict
     
     def get_predictions(self, wav):
         timestamps = get_speech_timestamps(
             wav,
             self.model,
-            sampling_rate=self.sampling_rate,
+            sampling_rate=self.audio["sample_rate"],
             threshold=self.threshold,
             window_size_samples= self.window_size_samples,
             neg_threshold = self.neg_threshold, 
@@ -62,6 +63,20 @@ class SileroVAD():
             min_speech_duration_ms = self.min_speech_duration_ms
         )
         return timestamps
+    
+    def predict(self) -> dict:
+        signal = self.audio["signal_tensor"]
+        confidence = self.get_confidence(signal)
+        frames = self.get_predictions(signal)
+        frames_s = BaseVAD.convert_ms_to_seconds(frames, self.audio["sample_rate"])
+        metrics = BaseVAD.match_segments(frames_s, self.audio["labels"], threshold=0.5)
+
+        return {
+            "confidence": confidence,
+            "preds_ms": frames,
+            "preds_s": frames_s,
+            "metrics": metrics
+        }
 
 
 

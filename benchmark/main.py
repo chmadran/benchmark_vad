@@ -8,13 +8,11 @@ import numpy as np
 
 from config.config import init_experiments_from_config
 from utils.utils import create_log_dirs
-from benchmark.benchmark.benchmark import run_experiments
+from benchmark.benchmark import run_experiments
 from post_process.post_process import PostProcessor
 from pre_process.dataset import split_dataset_for_grid_search
 
 #TODO: Pre and Post processing of the audio could be improved honestly, maybe in a class?
-#TODO: Handling of parameters is dirty af
-#TODO: Potentially cleaner to create a Factory SD for the VADs
 
 AVAILABLE_VAD_MODELS = ["webrtc", "silero", "pyannote"] 
 
@@ -24,8 +22,8 @@ def run(args):
     experiments = init_experiments_from_config(args.config_file, args.models, log_dir)
     
     if grid_search_dataset:
-        best_models, experiments = run_experiments(grid_search_dataset, experiments, log_dir, grid_search=True)
-    predictions = run_experiments(inference_dataset, experiments, log_dir)
+        best_hyperparameters_experiments = run_experiments(grid_search_dataset, experiments, log_dir, grid_search=True)
+    predictions = run_experiments(inference_dataset, best_hyperparameters_experiments, log_dir)
 
     # if predictions:
     #     result_processor = PostProcessor(args.models, predictions)

@@ -3,6 +3,7 @@ import os
 import warnings
 import logging
 import numpy as np
+from models.base import BaseVAD
 from pyannote.audio import Model, Pipeline
 from pyannote.audio.pipelines import VoiceActivityDetection
 
@@ -10,15 +11,20 @@ warnings.filterwarnings("ignore")
 logging.getLogger("pytorch_lightning").setLevel(logging.ERROR)
 
 
-class PyAnnoteVAD():
+class PyAnnoteVAD(BaseVAD):
     
     def __init__(self, 
+                 audio: dict,
                  experiment_id: int,
                  onset: float = 0.5,
                  offset: float = 0.5,
                  min_duration_on: float = 0.0,
                  min_duration_off: float = 0.0,
                  ):
+        
+        self.audio = audio
+        super().__init__(audio, experiment_id=experiment_id)
+
         model = Model.from_pretrained("pyannote/segmentation", 
                                     use_auth_token=os.environ['HF_TOKEN'])
         
@@ -34,12 +40,6 @@ class PyAnnoteVAD():
         self.pipeline = pipeline
         self.experiment_id = experiment_id
 
-
-    def predict(self, wav_file):
-        
-        output = self.pipeline(wav_file)
-        return [(segment.start, segment.end) for segment in output.get_timeline().support()]
-
     def add_start_end(self, preds: list[float, float]):
         formatted_preds = []
 
@@ -50,3 +50,12 @@ class PyAnnoteVAD():
             })
 
         return formatted_preds
+
+    def predict(self) -> dict:
+        signal = self.audio["signal_tensor"]
+        frames = self.get_predictions(signal)
+
+        return {
+            "preds_s": frames,
+            "metrics": BaseVAD.match_segments(frames, self.audio["labels"], threshold=0.5)
+        }
