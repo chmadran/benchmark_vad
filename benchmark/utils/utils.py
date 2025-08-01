@@ -20,29 +20,6 @@ def create_log_dirs(log_dir, xp_name, models):
             print(f"An error occurred: {e}")
     return log_dir
 
-def process_data(path_audio):
-    sr, wav = wavfile.read(path_audio)
-    wav_tensor = torchaudio.load(path_audio)
-    assert wav.ndim == 1, "Audio must be mono." #TODO: add downmixing?
-    wav_bytes = wav.tobytes()
-    return sr, wav, wav_bytes, wav_tensor
-
-def load_labels(path_to_json):
-    with open(path_to_json, 'r') as f:
-        data = json.load(f)
-
-    speech_segments = []
-
-    for task in data:
-        for annotation in task.get("annotations", []):
-            for result in annotation.get("result", []):
-                if "Speech" in result["value"]["labels"]:
-                    start = result["value"]["start"]
-                    end = result["value"]["end"]
-                    speech_segments.append((start, end))
-
-    return speech_segments
-
 def convert_predictions_to_seconds(predictions: list, sampling_rate: int):
     return [
         (seg["start"] / sampling_rate, seg["end"] / sampling_rate) 

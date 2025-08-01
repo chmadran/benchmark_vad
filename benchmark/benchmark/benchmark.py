@@ -4,10 +4,12 @@ from pathlib import Path
 from tqdm import tqdm
 import pandas as pd
 import os
+import torch
 import time
 import json
 
-from utils.utils import process_data, load_labels, convert_predictions_to_seconds, get_memory_usage_mb
+from utils.utils import convert_predictions_to_seconds, get_memory_usage_mb
+from pre_process.loader import load_audio, load_labels
 
 from models.silero import SileroVAD
 from models.webrtc import WebRTCVAD
@@ -49,7 +51,7 @@ def save_results_global(log_dir: Path, model: str, all_results: list):
         model (str): Name of the model whose results should be saved.
         all_results (list): List of result dictionaries from all benchmarks.
     """
-    model_log_path = os.path.join(log_dir, model, "grid_search", "global_results.json")
+    model_log_path = os.path.join(log_dir, model, "inference", "global_results.json")
     os.makedirs(os.path.dirname(model_log_path), exist_ok=True)
     with open(model_log_path, "w") as f:
         json.dump([r for r in all_results if r["model"] == model], f, indent=2)
@@ -90,7 +92,7 @@ def save_results_per_audio(log_dir: Path, model: str, all_results: list):
         grouped[audio_name].append(result)
 
     for audio_name, results in grouped.items():
-        file_path = os.path.join(log_dir, model, "grid_search", f"{audio_name}.json")
+        file_path = os.path.join(log_dir, model, "inference", f"{audio_name}.json")
         os.makedirs(os.path.dirname(file_path), exist_ok=True)
         with open(file_path, "w") as f:
             json.dump(results, f, indent=2)
@@ -151,59 +153,37 @@ def match_segments(predicted: list[tuple[float, float]], ground_truth: tuple[flo
         "F1": f1
         }
 
-def run_benchmark(model_name: str, model_params: dict, audio_path: Path, label_audio_path: Path):
-    """
-    Run a VAD benchmark for a given model and parameter configuration on a single audio file.
-
-    Args:
-        model_name (str): Name of the VAD model to benchmark ("silero", "webrtc", or "pyannote").
-        model_params (dict): Dictionary of hyperparameters to initialize the model with.
-        audio_path (Path): Path to the input audio file.
-        label_audio_path (Path): Path to the label file for the audio.
-
-    Returns:
-        dict: Dictionary containing:
-            - "experiment_id" : Id of the experiment (the hyperparameters tried).
-            - "preds_s": List of predicted speech segments in seconds.
-            - "inference_time": Total inference time in seconds.
-            - "rtf": Real-time factor (inference_time / audio duration).
-            - "memory_KB": Memory usage during inference in KB.
-            - "metrics": Evaluation metrics computed by `match_segments` (e.g F1 score, precision, recall).
-            - (optional) "confidence": Model confidence score.
-            - (optional) "preds_ms": Raw prediction output in milliseconds.
-    """
+def run_benchmark(model_name: str, model_params: dict, audio: dict):
     preds = {}
-    sr, wav, wav_bytes, wav_tensor = process_data(audio_path)
-    audio_duration = len(wav) / sr
 
     if model_name == "silero":
-        silero = SileroVAD(sampling_rate=sr, **model_params)
+        silero = SileroVAD(sampling_rate=audio["sample_rate"], **model_params)
         start = time.time()
         mem_start = get_memory_usage_mb()
-        confidence = silero.get_confidence(wav_tensor[0])
-        frames = silero.get_predictions(wav_tensor[0])
+        confidence = silero.get_confidence(audio["signal_tensor"])
+        frames = silero.get_predictions(audio["signal_tensor"])
         end = time.time()
         mem_end = get_memory_usage_mb()
         preds = {
             "preds_ms": frames,
             "confidence": confidence,
             "inference_time": end - start,
-            "rtf": (end - start) / audio_duration,
+            "rtf": (end - start) / audio["duration"],
             "memory_KB": mem_end - mem_start
         }
 
     elif model_name == "webrtc":
-        webrtc = WebRTCVAD(sampling_rate=sr, **model_params)
+        webrtc = WebRTCVAD(sampling_rate=audio["sample_rate"], **model_params)
         start = time.time()
         mem_start = get_memory_usage_mb()
-        frames = webrtc.predict(wav, wav_bytes)
+        frames = webrtc.predict(audio["signal"], audio["signal_bytes"])
         end = time.time()
         mem_end = get_memory_usage_mb()
         frames = webrtc.merge_speech_segments(frames)
         preds = {
             "preds_ms": frames,
             "inference_time": end - start,
-            "rtf": (end - start) / audio_duration,
+            "rtf": (end - start) / audio["duration"],
             "memory_KB": mem_end - mem_start
         }
 
@@ -211,26 +191,26 @@ def run_benchmark(model_name: str, model_params: dict, audio_path: Path, label_a
         pyannotevad = PyAnnoteVAD(**model_params)
         start = time.time()
         mem_start = get_memory_usage_mb()
-        frames = pyannotevad.predict(audio_path)
+        frames = pyannotevad.predict(audio["file_path"])
         end = time.time()
         mem_end = get_memory_usage_mb()
         preds = {
             "preds_s": frames,
             "inference_time": end - start,
-            "rtf": (end - start) / audio_duration,
+            "rtf": (end - start) / audio["duration"],
             "memory_KB": mem_end - mem_start
         }
 
-    truth = load_labels(label_audio_path)
+    truth = audio["labels"] 
     if "preds_s" not in preds:
-        preds_in_seconds = convert_predictions_to_seconds(preds["preds_ms"], sr)
+        preds_in_seconds = convert_predictions_to_seconds(preds["preds_ms"], audio["sample_rate"])
         preds["preds_s"] = preds_in_seconds
-    preds["metrics"] = match_segments(preds["preds_s"], truth, threshold=0.5)
 
+    preds["metrics"] = match_segments(preds["preds_s"], truth, threshold=0.5)
     return preds
 
 
-def run_grid_search(dataset:list, experiments:dict, log_dir:Path) -> tuple[list, dict]:
+def run_experiments(dataset:list, experiments:dict, log_dir:Path, grid_search: bool=False) -> tuple[list, dict]:
     """
     Run benchmarking for multiple models across parameter combinations and audio files, 
     and log the results.
@@ -246,16 +226,25 @@ def run_grid_search(dataset:list, experiments:dict, log_dir:Path) -> tuple[list,
     """
     results = {}
     best_models = {}
-    inference_experiments = {}
+    new_experiments = {}
 
     for model, params in experiments.items():
         best_score = -1
         all_results = []
-        print(f"\n RUNNING GRID SEARCH FOR {model.upper()}")
+        if grid_search:
+            print(f"\n RUNNING GRID SEARCH FOR {model.upper()}")
+        else:
+            print(f"\n RUNNING INFERENCE FOR {model.upper()}")
+
         for param in tqdm(params):
             for raw_audio_path, label_audio_path in dataset:
                 try:
-                    predictions = run_benchmark(model, param, raw_audio_path, label_audio_path)
+                    audio = load_audio(raw_audio_path, label_audio_path)
+                except Exception as e:
+                    print(f"Error while loading audio {raw_audio_path} : {e}")
+                    continue
+                try:
+                    predictions = run_benchmark(model, param, audio)
                     result = {
                         "audio": os.path.basename(raw_audio_path),
                         "model": model,
@@ -271,14 +260,17 @@ def run_grid_search(dataset:list, experiments:dict, log_dir:Path) -> tuple[list,
                         best_model = result
 
                 except Exception as e:
-                    print(f"[ERROR] Model: {model}, Params: {params}, audio: {raw_audio_path}, Reason: {e}")
+                    print(f"[ERROR] Model: {model}, Params: {param}, audio: {raw_audio_path}, Reason: {e}")
 
-        best_models[model] = [best_model]
-        inference_experiments[model] = [best_model["parameters"]]
+        new_experiments[model] = [best_model["parameters"]]
         results[model] = all_results
-        print_best_model(best_model, metric="F1")
-        # save_results_global(log_dir, model, all_results)
-        # save_results_per_audio(log_dir, model, all_results)
-        save_results_per_model_csv(results, log_dir)
 
-    return best_models, inference_experiments
+        if grid_search:
+            best_models[model] = [best_model]
+            print_best_model(best_model, metric="F1")
+            save_results_per_model_csv(results, log_dir)
+        else:
+            save_results_global(log_dir, model, all_results)
+            save_results_per_audio(log_dir, model, all_results)
+
+    return best_models, new_experiments
